@@ -17,7 +17,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@CrossOrigin(origins = "https://your-frontend.onrender.com") // Replace with your deployed frontend URL
+@CrossOrigin(origins = "https://privacyanalyzer.onrender.com") // Replace with your deployed frontend URL
 public class PrivacyAnalyzerController {
 
     @PostMapping("/analyze")
