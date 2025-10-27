@@ -15,8 +15,7 @@ RUN apt-get update && \
 # Set working directory
 WORKDIR /app
 
-# Copy Maven built jar (replace 'privacy-analyzer.jar' with your jar name)
-COPY target/privacy-analyzer.jar app.jar
+COPY target/privacyanalyzer-0.0.1-SNAPSHOT.jar app.jar
 
 # Expose port
 EXPOSE 8080
