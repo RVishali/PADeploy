@@ -59,7 +59,12 @@ analyzeBtn.addEventListener("click", async function() {
   showResult(`<div class="loading-msg">🔎 Analyzing website... please wait</div>`);
 
 try {
-  const response = await fetch("http://localhost:8080/analyze", {
+  const backendURL =
+  window.location.hostname === "localhost"
+    ? "http://localhost:8080"
+    : "https://privacy-backend.onrender.com";
+
+const response = await fetch(`${backendURL}/analyze`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ website: url })
