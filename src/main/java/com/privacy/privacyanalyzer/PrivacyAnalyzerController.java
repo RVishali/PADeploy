@@ -2,24 +2,22 @@ package com.privacy.privacyanalyzer;
 
 import java.net.URI;
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
+import org.openqa.selenium.By;
 import org.openqa.selenium.JavascriptExecutor;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.chrome.ChromeDriver;
 import org.openqa.selenium.chrome.ChromeOptions;
+import org.openqa.selenium.support.ui.ExpectedCondition;
+import org.openqa.selenium.support.ui.WebDriverWait;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@CrossOrigin // Can be omitted because global CORS config handles this
+@CrossOrigin(origins = "https://your-frontend.onrender.com") // Replace with your deployed frontend URL
 public class PrivacyAnalyzerController {
 
     @PostMapping("/analyze")
@@ -30,26 +28,34 @@ public class PrivacyAnalyzerController {
         List<Map<String, Object>> storageList = new ArrayList<>();
         String pageTitle = "";
 
-        io.github.bonigarcia.wdm.WebDriverManager.chromedriver().setup();
         ChromeOptions options = new ChromeOptions();
-        options.addArguments("--headless=new", "--disable-gpu", "--no-sandbox", "--disable-dev-shm-usage",
-                "--window-size=1920,1080", "--blink-settings=imagesEnabled=false",
-                "--disable-blink-features=AutomationControlled");
+        options.setBinary("/usr/bin/chromium-browser"); // Render's Chromium path
+        options.addArguments("--headless=new");
+        options.addArguments("--disable-gpu");
+        options.addArguments("--no-sandbox");
+        options.addArguments("--disable-dev-shm-usage");
+        options.addArguments("--window-size=1920,1080");
+        options.addArguments("--blink-settings=imagesEnabled=false");
+        options.addArguments("--disable-blink-features=AutomationControlled");
         options.addArguments("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                 + "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
 
         WebDriver driver = null;
         try {
             driver = new ChromeDriver(options);
-            driver.manage().timeouts().pageLoadTimeout(Duration.ofSeconds(12));
+            driver.manage().timeouts().pageLoadTimeout(Duration.ofSeconds(15));
+
             driver.get(website);
+
+            // Wait until the page is loaded (title is not empty)
+            WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(10));
+            wait.until((ExpectedCondition<Boolean>) wd -> ((JavascriptExecutor) wd)
+                    .executeScript("return document.readyState").equals("complete"));
+
             pageTitle = driver.getTitle();
 
             JavascriptExecutor js = (JavascriptExecutor) driver;
-
-            // Quick scroll for lazy content
             js.executeScript("window.scrollBy(0, document.body.scrollHeight / 2);");
-            Thread.sleep(1000);
 
             for (org.openqa.selenium.Cookie cookie : driver.manage().getCookies()) {
                 cookiesList.add(Map.of(
@@ -131,4 +137,3 @@ public class PrivacyAnalyzerController {
         }
     }
 }
-
