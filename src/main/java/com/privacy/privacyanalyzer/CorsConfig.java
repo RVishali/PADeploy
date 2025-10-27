@@ -6,16 +6,12 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 @Configuration
 public class CorsConfig implements WebMvcConfigurer {
+
     @Override
     public void addCorsMappings(CorsRegistry registry) {
         registry.addMapping("/**")
-                .allowedOrigins(
-                        "http://localhost:8080",
-                        "http://localhost:5500",
-                        "https://privacy-frontend.onrender.com" // ✅ your Render frontend URL here
-                )
+                .allowedOrigins("https://your-frontend.onrender.com") // replace with your frontend URL
                 .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
-                .allowedHeaders("*")
-                .allowCredentials(false); // ✅ easier for public APIs
+                .allowCredentials(true);
     }
 }
