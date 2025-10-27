@@ -1,24 +1,37 @@
-# Start from official OpenJDK 17 image
-FROM openjdk:17-jdk-slim
 
-# Set environment variables
-ENV DEBIAN_FRONTEND=noninteractive \
-    CHROMIUM_BIN=/usr/bin/chromium-browser \
-    CHROMEDRIVER_BIN=/usr/bin/chromedriver \
-    JAVA_OPTS=""
+# Stage 1: Build the JAR
+FROM maven:3.9.2-eclipse-temurin-17 AS build
 
-# Install Chromium and dependencies
-RUN apt-get update && \
-    apt-get install -y chromium chromium-driver wget curl unzip gnupg && \
-    rm -rf /var/lib/apt/lists/*
-
-# Set working directory
 WORKDIR /app
 
-COPY target/privacyanalyzer-0.0.1-SNAPSHOT.jar app.jar
+# Copy Maven config first (for caching dependencies)
+COPY pom.xml .
+RUN mvn dependency:go-offline
 
-# Expose port
+# Copy the source code
+COPY src ./src
+
+# Build the Spring Boot JAR
+RUN mvn clean package -DskipTests
+
+# Stage 2: Runtime image
+FROM eclipse-temurin:17-jre
+
+WORKDIR /app
+
+# Install Chromium for headless Selenium
+RUN apt-get update && \
+    apt-get install -y chromium chromium-driver && \
+    rm -rf /var/lib/apt/lists/*
+
+# Copy the JAR from the build stage
+COPY --from=build /app/target/privacyanalyzer-0.0.1-SNAPSHOT.jar app.jar
+
+# Set environment variable for Selenium to find Chromium
+ENV CHROMIUM_PATH=/usr/bin/chromium
+
+# Expose default Spring Boot port
 EXPOSE 8080
 
-# Run the app
-ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar app.jar"]
+# Run the application
+ENTRYPOINT ["java", "-jar", "app.jar"]
