@@ -29,7 +29,8 @@ public class PrivacyAnalyzerController {
         String pageTitle = "";
 
         ChromeOptions options = new ChromeOptions();
-        options.setBinary("/usr/bin/chromium-browser"); // Render's Chromium path
+        String chromiumPath = System.getenv().getOrDefault("CHROMIUM_PATH", "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe");
+        options.setBinary(chromiumPath);
         options.addArguments("--headless=new");
         options.addArguments("--disable-gpu");
         options.addArguments("--no-sandbox");
