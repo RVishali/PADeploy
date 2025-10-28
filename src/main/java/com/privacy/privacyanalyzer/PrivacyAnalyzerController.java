@@ -1,10 +1,15 @@
 package com.privacy.privacyanalyzer;
 
-import com.microsoft.playwright.*;
-import com.microsoft.playwright.options.Cookie;
+import org.openqa.selenium.*;
+import org.openqa.selenium.chrome.ChromeDriver;
+import org.openqa.selenium.chrome.ChromeOptions;
+import org.openqa.selenium.support.ui.ExpectedCondition;
+import org.openqa.selenium.support.ui.WebDriverWait;
+import io.github.bonigarcia.wdm.WebDriverManager;
 import org.springframework.web.bind.annotation.*;
 
 import java.net.URI;
+import java.time.Duration;
 import java.util.*;
 
 @RestController
@@ -19,54 +24,79 @@ public class PrivacyAnalyzerController {
         List<Map<String, Object>> storageList = new ArrayList<>();
         String pageTitle = "";
 
-        try (Playwright playwright = Playwright.create()) {
-            Browser browser = playwright.chromium()
-                    .launch(new BrowserType.LaunchOptions().setHeadless(true));
-            Page page = browser.newPage();
-            page.navigate(website, new Page.NavigateOptions().setTimeout(15000));
+        // Setup Selenium
+        WebDriverManager.chromedriver().setup();
+        ChromeOptions options = new ChromeOptions();
+        options.addArguments(
+                "--headless=new",
+                "--no-sandbox",
+                "--disable-dev-shm-usage",
+                "--window-size=1920,1080",
+                "--disable-gpu"
+        );
 
-            pageTitle = page.title();
+        WebDriver driver = new ChromeDriver(options);
+        try {
+            driver.manage().timeouts().pageLoadTimeout(Duration.ofSeconds(15));
+            driver.get(website);
 
+            // Wait until page is fully loaded
+            new WebDriverWait(driver, Duration.ofSeconds(10)).until(
+                    (ExpectedCondition<Boolean>) wd ->
+                            ((JavascriptExecutor) wd).executeScript("return document.readyState").equals("complete")
+            );
+
+            pageTitle = driver.getTitle();
+
+            // ----------------
             // Cookies
-            for (Cookie cookie : page.context().cookies()) {
+            // ----------------
+            for (Cookie cookie : driver.manage().getCookies()) {
                 cookiesList.add(Map.of(
-                        "name", cookie.name,
-                        "domain", cookie.domain,
-                        "path", cookie.path,
-                        "value", cookie.value
+                        "name", cookie.getName(),
+                        "domain", cookie.getDomain(),
+                        "path", cookie.getPath(),
+                        "value", cookie.getValue()
                 ));
             }
 
-            // LocalStorage / SessionStorage
-            JSHandle lsKeys = page.evaluateHandle("() => Object.keys(localStorage)");
-            JSHandle ssKeys = page.evaluateHandle("() => Object.keys(sessionStorage)");
-
-            List<String> localKeys = (List<String>)(Object) lsKeys.jsonValue();
-            List<String> sessionKeys = (List<String>)(Object) ssKeys.jsonValue();
-
+            // ----------------
+            // LocalStorage & SessionStorage
+            // ----------------
+            JavascriptExecutor js = (JavascriptExecutor) driver;
+            List<String> localKeys = (List<String>) js.executeScript(
+                    "return Object.keys(window.localStorage);"
+            );
+            List<String> sessionKeys = (List<String>) js.executeScript(
+                    "return Object.keys(window.sessionStorage);"
+            );
             if (!localKeys.isEmpty()) storageList.add(Map.of("type", "localStorage", "keys", localKeys));
             if (!sessionKeys.isEmpty()) storageList.add(Map.of("type", "sessionStorage", "keys", sessionKeys));
 
-            // Third-party scripts
+            // ----------------
+            // Third-party scripts/images/iframes
+            // ----------------
             String mainDomain = new URI(website).getHost();
-            List<String> resourceUrls = page.evalOnSelectorAll(
-                    "script[src],img[src],iframe[src]",
-                    "elements => elements.map(e => e.src).slice(0,50)"
-            );
-            for (String url : resourceUrls) {
+            List<WebElement> resources = driver.findElements(By.cssSelector("script[src],img[src],iframe[src]"));
+            for (WebElement el : resources) {
                 try {
-                    String host = new URI(url).getHost();
-                    if (host != null && !host.equals(mainDomain)) thirdPartyDomains.add(host);
+                    String src = el.getAttribute("src");
+                    if (src != null) {
+                        String host = new URI(src).getHost();
+                        if (host != null && !host.equals(mainDomain)) thirdPartyDomains.add(host);
+                    }
                 } catch (Exception ignored) {}
             }
 
-            browser.close();
-
         } catch (Exception e) {
             e.printStackTrace();
+        } finally {
+            driver.quit();
         }
 
-        // Scoring / grading logic
+        // ----------------
+        // Privacy Scoring
+        // ----------------
         int cookieScore = cookiesList.size();
         int thirdPartyScore = thirdPartyDomains.size();
         int storageScore = storageList.size();
@@ -89,8 +119,14 @@ public class PrivacyAnalyzerController {
             analysisSummary = "Heavy use of tracking cookies, third-party scripts, or ads detected. High privacy risk.";
         }
 
+        // ----------------
+        // Examples generation
+        // ----------------
         String examples = generateExamples(cookieScore, thirdPartyScore, storageScore, thirdPartyDomains);
 
+        // ----------------
+        // Build Result
+        // ----------------
         Map<String, Object> result = new HashMap<>();
         result.put("website", website);
         result.put("pageTitle", pageTitle.isEmpty() ? "Unknown" : pageTitle);
@@ -105,9 +141,12 @@ public class PrivacyAnalyzerController {
         return result;
     }
 
-    // Dummy example generator, replace with your actual logic
-    private String generateExamples(int cookies, int thirdParties, int storage, Set<String> thirdPartyDomains) {
-        if (cookies == 0 && thirdParties == 0 && storage == 0) return "Similar to Wikipedia, which collects minimal user data and rarely uses third-party trackers.";
-        return "Example: site uses " + cookies + " cookies, " + thirdParties + " third-party domains, and " + storage + " storage entries.";
+    private String generateExamples(int cookies, int thirdParty, int storage, Set<String> thirdPartyDomains) {
+        StringBuilder sb = new StringBuilder();
+        if (cookies > 0) sb.append(cookies).append(" cookies detected. ");
+        if (storage > 0) sb.append(storage).append(" storage entries. ");
+        if (thirdParty > 0) sb.append("Third-party domains: ").append(String.join(", ", thirdPartyDomains)).append(".");
+        if (cookies + storage + thirdParty == 0) sb.append("No tracking detected.");
+        return sb.toString();
     }
 }
