@@ -18,20 +18,14 @@ FROM eclipse-temurin:17-jre
 
 WORKDIR /app
 
-# Install Chromium and dependencies for headless Selenium
 RUN apt-get update && \
-    apt-get install -y chromium chromium-driver \
-    libnss3 libgdk-pixbuf2.0-0 libatk-bridge2.0-0 libgbm1 libasound2 \
-    && rm -rf /var/lib/apt/lists/*
+    apt-get install -y chromium chromium-driver && \
+    ln -sf /usr/bin/chromium-browser /usr/bin/chromium && \
+    rm -rf /var/lib/apt/lists/*
 
-# Copy the JAR from the build stage
 COPY --from=build /app/target/privacyanalyzer-0.0.1-SNAPSHOT.jar app.jar
 
-# Set environment variable for Selenium to find Chromium
-ENV CHROMIUM_PATH=/usr/bin/chromium
+ENV CHROMIUM_PATH=/usr/bin/chromium-browser
 
-# Expose default Spring Boot port
 EXPOSE 8080
-
-# Run the application
 ENTRYPOINT ["java", "-jar", "app.jar"]
