@@ -34,12 +34,8 @@
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-web</artifactId>
 		</dependency>
-		<!-- Selenium Java for browser automation -->
-        <dependency>
-        <groupId>org.seleniumhq.selenium</groupId>
-        <artifactId>selenium-java</artifactId>
-        </dependency>
-
+		
+        
 
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
@@ -52,11 +48,7 @@
 			<artifactId>spring-boot-starter-test</artifactId>
 			<scope>test</scope>
 		</dependency>
-		<dependency>
-    <groupId>io.github.bonigarcia</groupId>
-    <artifactId>webdrivermanager</artifactId>
-    <version>5.9.2</version>
-</dependency>
+		
 		<dependency>
     <groupId>com.microsoft.playwright</groupId>
     <artifactId>playwright</artifactId>
