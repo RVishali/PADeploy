@@ -1,48 +1,37 @@
-# ------------------------
-# Stage 1: Build
-# ------------------------
-FROM maven:3.9.5-eclipse-temurin-17 AS build
 
-# Set working directory
+# Stage 1: Build the JAR
+FROM maven:3.9.2-eclipse-temurin-17 AS build
+
 WORKDIR /app
 
-# Copy Maven config first for caching
+# Copy Maven config first (for caching dependencies)
 COPY pom.xml .
+RUN mvn dependency:go-offline
 
-# Download dependencies
-RUN mvn dependency:go-offline -B
-
-# Copy source code
+# Copy the source code
 COPY src ./src
 
-# Build Spring Boot JAR (skip tests for speed)
+# Build the Spring Boot JAR
 RUN mvn clean package -DskipTests
 
-# ------------------------
-# Stage 2: Runtime
-# ------------------------
+# Stage 2: Runtime image
 FROM eclipse-temurin:17-jre
 
-# Install Chrome (headless)
-RUN apt-get update && \
-    apt-get install -y wget unzip gnupg2 && \
-    wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | apt-key add - && \
-    sh -c 'echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google-chrome.list' && \
-    apt-get update && \
-    apt-get install -y google-chrome-stable && \
-    rm -rf /var/lib/apt/lists/*
-
-# Set working directory
 WORKDIR /app
 
-# Copy the Spring Boot JAR from build stage
+# Install Chromium for headless Selenium
+RUN apt-get update && \
+    apt-get install -y chromium chromium-driver && \
+    rm -rf /var/lib/apt/lists/*
+
+# Copy the JAR from the build stage
 COPY --from=build /app/target/privacyanalyzer-0.0.1-SNAPSHOT.jar app.jar
+
+# Set environment variable for Selenium to find Chromium
+ENV CHROMIUM_PATH=/usr/bin/chromium
 
 # Expose default Spring Boot port
 EXPOSE 8080
 
-# Set environment variable for headless Chrome
-ENV CHROME_BIN=/usr/bin/google-chrome
-
-# Run the Spring Boot app
-ENTRYPOINT ["java","-jar","app.jar"]
+# Run the application
+ENTRYPOINT ["java", "-jar", "app.jar"]
