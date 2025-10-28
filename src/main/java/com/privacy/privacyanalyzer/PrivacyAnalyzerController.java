@@ -1,15 +1,14 @@
 package com.privacy.privacyanalyzer;
 
-import org.springframework.web.bind.annotation.*;
-import java.util.*;
-import java.net.URI;
-
-// Playwright imports
 import com.microsoft.playwright.*;
-import com.microsoft.playwright.options.*;
+import com.microsoft.playwright.options.Cookie;
+import org.springframework.web.bind.annotation.*;
+
+import java.net.URI;
+import java.util.*;
 
 @RestController
-@CrossOrigin(origins = "https://privacyanalyzer.onrender.com") // Replace with your frontend URL
+@RequestMapping("/api")
 public class PrivacyAnalyzerController {
 
     @PostMapping("/analyze")
@@ -21,37 +20,39 @@ public class PrivacyAnalyzerController {
         String pageTitle = "";
 
         try (Playwright playwright = Playwright.create()) {
-            Browser browser = playwright.chromium().launch(
-                new BrowserType.LaunchOptions().setHeadless(true)
-            );
+            Browser browser = playwright.chromium()
+                    .launch(new BrowserType.LaunchOptions().setHeadless(true));
             Page page = browser.newPage();
             page.navigate(website, new Page.NavigateOptions().setTimeout(15000));
 
             pageTitle = page.title();
 
-            // Get cookies
-            for (BrowserContext.Cookie cookie : page.context().cookies()) {
+            // Cookies
+            for (Cookie cookie : page.context().cookies()) {
                 cookiesList.add(Map.of(
-                    "name", cookie.name,
-                    "domain", cookie.domain,
-                    "path", cookie.path,
-                    "value", cookie.value
+                        "name", cookie.name,
+                        "domain", cookie.domain,
+                        "path", cookie.path,
+                        "value", cookie.value
                 ));
             }
 
-            // Get LocalStorage and SessionStorage keys
-            List<String> localKeys = page.evaluate("() => Object.keys(localStorage)");
-            List<String> sessionKeys = page.evaluate("() => Object.keys(sessionStorage)");
+            // LocalStorage / SessionStorage
+            JSHandle lsKeys = page.evaluateHandle("() => Object.keys(localStorage)");
+            JSHandle ssKeys = page.evaluateHandle("() => Object.keys(sessionStorage)");
+
+            List<String> localKeys = (List<String>)(Object) lsKeys.jsonValue();
+            List<String> sessionKeys = (List<String>)(Object) ssKeys.jsonValue();
+
             if (!localKeys.isEmpty()) storageList.add(Map.of("type", "localStorage", "keys", localKeys));
             if (!sessionKeys.isEmpty()) storageList.add(Map.of("type", "sessionStorage", "keys", sessionKeys));
 
-            // Get third-party domains from scripts, images, iframes
+            // Third-party scripts
             String mainDomain = new URI(website).getHost();
             List<String> resourceUrls = page.evalOnSelectorAll(
-                "script[src],img[src],iframe[src]",
-                "elements => elements.map(e => e.src).slice(0,50)"
+                    "script[src],img[src],iframe[src]",
+                    "elements => elements.map(e => e.src).slice(0,50)"
             );
-
             for (String url : resourceUrls) {
                 try {
                     String host = new URI(url).getHost();
@@ -60,11 +61,12 @@ public class PrivacyAnalyzerController {
             }
 
             browser.close();
+
         } catch (Exception e) {
             e.printStackTrace();
         }
 
-        // Scoring
+        // Scoring / grading logic
         int cookieScore = cookiesList.size();
         int thirdPartyScore = thirdPartyDomains.size();
         int storageScore = storageList.size();
@@ -103,15 +105,9 @@ public class PrivacyAnalyzerController {
         return result;
     }
 
-    private String generateExamples(int cookies, int trackers, int storage, Set<String> thirdPartyDomains) {
-        if (cookies == 0 && trackers == 0) {
-            return "Example: Similar to Wikipedia, which collects minimal user data and rarely uses third-party trackers.";
-        } else if (trackers > 0 && thirdPartyDomains.stream().anyMatch(d -> d.contains("google") || d.contains("meta"))) {
-            return "Example: This pattern often appears in analytics-driven sites like news outlets that use Google services.";
-        } else if (storage > 0) {
-            return "Example: Sites using localStorage may store user preferences or session tokens persistently.";
-        } else {
-            return "Example: Moderate websites use light tracking for improving UX while maintaining transparency.";
-        }
+    // Dummy example generator, replace with your actual logic
+    private String generateExamples(int cookies, int thirdParties, int storage, Set<String> thirdPartyDomains) {
+        if (cookies == 0 && thirdParties == 0 && storage == 0) return "Similar to Wikipedia, which collects minimal user data and rarely uses third-party trackers.";
+        return "Example: site uses " + cookies + " cookies, " + thirdParties + " third-party domains, and " + storage + " storage entries.";
     }
 }
