@@ -1,19 +1,24 @@
-package com.privacy.privacyanalyzer;
 
-import org.openqa.selenium.*;
-import org.openqa.selenium.chrome.ChromeDriver;
-import org.openqa.selenium.chrome.ChromeOptions;
-import org.openqa.selenium.support.ui.ExpectedCondition;
-import org.openqa.selenium.support.ui.WebDriverWait;
-import io.github.bonigarcia.wdm.WebDriverManager;
-import org.springframework.web.bind.annotation.*;
+package com.privacy.privacyanalyzer;
 
 import java.net.URI;
 import java.time.Duration;
 import java.util.*;
 
+import org.openqa.selenium.By;
+import org.openqa.selenium.JavascriptExecutor;
+import org.openqa.selenium.WebDriver;
+import org.openqa.selenium.chrome.ChromeDriver;
+import org.openqa.selenium.chrome.ChromeOptions;
+import org.openqa.selenium.support.ui.ExpectedCondition;
+import org.openqa.selenium.support.ui.WebDriverWait;
+import org.springframework.web.bind.annotation.CrossOrigin;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RestController;
+
 @RestController
-@RequestMapping("/api")
+@CrossOrigin(origins = "https://privacyanalyzer.onrender.com") // Replace with your deployed frontend URL
 public class PrivacyAnalyzerController {
 
     @PostMapping("/analyze")
@@ -24,34 +29,37 @@ public class PrivacyAnalyzerController {
         List<Map<String, Object>> storageList = new ArrayList<>();
         String pageTitle = "";
 
-        // Setup Selenium
-        WebDriverManager.chromedriver().setup();
         ChromeOptions options = new ChromeOptions();
-        options.addArguments(
-                "--headless=new",
-                "--no-sandbox",
-                "--disable-dev-shm-usage",
-                "--window-size=1920,1080",
-                "--disable-gpu"
-        );
+        String chromiumPath = System.getenv().getOrDefault("CHROMIUM_PATH", "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe");
+        options.setBinary(chromiumPath);
+        options.addArguments("--headless=new");
+        options.addArguments("--disable-gpu");
+        options.addArguments("--no-sandbox");
+        options.addArguments("--disable-dev-shm-usage");
+        options.addArguments("--window-size=1920,1080");
+        options.addArguments("--blink-settings=imagesEnabled=false");
+        options.addArguments("--disable-blink-features=AutomationControlled");
+        options.addArguments("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                + "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
 
-        WebDriver driver = new ChromeDriver(options);
+        WebDriver driver = null;
         try {
+            driver = new ChromeDriver(options);
             driver.manage().timeouts().pageLoadTimeout(Duration.ofSeconds(15));
+
             driver.get(website);
 
-            // Wait until page is fully loaded
-            new WebDriverWait(driver, Duration.ofSeconds(10)).until(
-                    (ExpectedCondition<Boolean>) wd ->
-                            ((JavascriptExecutor) wd).executeScript("return document.readyState").equals("complete")
-            );
+            // Wait until the page is loaded (title is not empty)
+            WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(10));
+            wait.until((ExpectedCondition<Boolean>) wd -> ((JavascriptExecutor) wd)
+                    .executeScript("return document.readyState").equals("complete"));
 
             pageTitle = driver.getTitle();
 
-            // ----------------
-            // Cookies
-            // ----------------
-            for (Cookie cookie : driver.manage().getCookies()) {
+            JavascriptExecutor js = (JavascriptExecutor) driver;
+            js.executeScript("window.scrollBy(0, document.body.scrollHeight / 2);");
+
+            for (org.openqa.selenium.Cookie cookie : driver.manage().getCookies()) {
                 cookiesList.add(Map.of(
                         "name", cookie.getName(),
                         "domain", cookie.getDomain(),
@@ -60,43 +68,28 @@ public class PrivacyAnalyzerController {
                 ));
             }
 
-            // ----------------
-            // LocalStorage & SessionStorage
-            // ----------------
-            JavascriptExecutor js = (JavascriptExecutor) driver;
-            List<String> localKeys = (List<String>) js.executeScript(
-                    "return Object.keys(window.localStorage);"
-            );
-            List<String> sessionKeys = (List<String>) js.executeScript(
-                    "return Object.keys(window.sessionStorage);"
-            );
-            if (!localKeys.isEmpty()) storageList.add(Map.of("type", "localStorage", "keys", localKeys));
-            if (!sessionKeys.isEmpty()) storageList.add(Map.of("type", "sessionStorage", "keys", sessionKeys));
+            List<String> lsKeys = (List<String>) js.executeScript("return Object.keys(localStorage);");
+            List<String> ssKeys = (List<String>) js.executeScript("return Object.keys(sessionStorage);");
+            if (!lsKeys.isEmpty()) storageList.add(Map.of("type", "localStorage", "keys", lsKeys));
+            if (!ssKeys.isEmpty()) storageList.add(Map.of("type", "sessionStorage", "keys", ssKeys));
 
-            // ----------------
-            // Third-party scripts/images/iframes
-            // ----------------
             String mainDomain = new URI(website).getHost();
-            List<WebElement> resources = driver.findElements(By.cssSelector("script[src],img[src],iframe[src]"));
-            for (WebElement el : resources) {
+            List<String> resourceUrls = (List<String>) js.executeScript(
+                    "const urls=[];document.querySelectorAll('script[src],img[src],iframe[src]').forEach(e=>{ urls.push(e.src); }); return urls.slice(0,50);");
+            for (String url : resourceUrls) {
                 try {
-                    String src = el.getAttribute("src");
-                    if (src != null) {
-                        String host = new URI(src).getHost();
-                        if (host != null && !host.equals(mainDomain)) thirdPartyDomains.add(host);
-                    }
+                    String host = new URI(url).getHost();
+                    if (host != null && !host.equals(mainDomain))
+                        thirdPartyDomains.add(host);
                 } catch (Exception ignored) {}
             }
 
         } catch (Exception e) {
             e.printStackTrace();
         } finally {
-            driver.quit();
+            if (driver != null) driver.quit();
         }
 
-        // ----------------
-        // Privacy Scoring
-        // ----------------
         int cookieScore = cookiesList.size();
         int thirdPartyScore = thirdPartyDomains.size();
         int storageScore = storageList.size();
@@ -119,14 +112,8 @@ public class PrivacyAnalyzerController {
             analysisSummary = "Heavy use of tracking cookies, third-party scripts, or ads detected. High privacy risk.";
         }
 
-        // ----------------
-        // Examples generation
-        // ----------------
         String examples = generateExamples(cookieScore, thirdPartyScore, storageScore, thirdPartyDomains);
 
-        // ----------------
-        // Build Result
-        // ----------------
         Map<String, Object> result = new HashMap<>();
         result.put("website", website);
         result.put("pageTitle", pageTitle.isEmpty() ? "Unknown" : pageTitle);
@@ -137,16 +124,20 @@ public class PrivacyAnalyzerController {
         result.put("analysisSummary", analysisSummary);
         result.put("examples", examples);
         result.put("thirdPartyDomains", thirdPartyDomains);
-
         return result;
     }
 
-    private String generateExamples(int cookies, int thirdParty, int storage, Set<String> thirdPartyDomains) {
-        StringBuilder sb = new StringBuilder();
-        if (cookies > 0) sb.append(cookies).append(" cookies detected. ");
-        if (storage > 0) sb.append(storage).append(" storage entries. ");
-        if (thirdParty > 0) sb.append("Third-party domains: ").append(String.join(", ", thirdPartyDomains)).append(".");
-        if (cookies + storage + thirdParty == 0) sb.append("No tracking detected.");
-        return sb.toString();
+    private String generateExamples(int cookies, int trackers, int storage, Set<String> thirdPartyDomains) {
+        if (cookies == 0 && trackers == 0) {
+            return "Example: Similar to Wikipedia, which collects minimal user data and rarely uses third-party trackers.";
+        } else if (trackers > 0 && thirdPartyDomains.stream().anyMatch(d -> d.contains("google") || d.contains("meta"))) {
+            return "Example: This pattern often appears in analytics-driven sites like news outlets that use Google services.";
+        } else if (storage > 0) {
+            return "Example: Sites using localStorage may store user preferences or session tokens persistently.";
+        } else {
+            return "Example: Moderate websites use light tracking for improving UX while maintaining transparency.";
+        }
     }
 }
+
+it isnt working in render because of headlessDriver. on which deploying website other than render will it work
