@@ -29,8 +29,9 @@ public class PrivacyAnalyzerController {
         String pageTitle = "";
 
         ChromeOptions options = new ChromeOptions();
-        String chromiumPath = System.getenv().getOrDefault("CHROMIUM_PATH", "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe");
-        options.setBinary(chromiumPath);
+options.setBinary(System.getenv().getOrDefault("CHROMIUM_PATH", "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"));  // Ensure you're using the correct path here
+options.addArguments("--headless", "--no-sandbox", "--disable-dev-shm-usage");
+
         options.addArguments("--headless=new");
         options.addArguments("--disable-gpu");
         options.addArguments("--no-sandbox");
