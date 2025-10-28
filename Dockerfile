@@ -13,19 +13,18 @@ COPY src ./src
 # Build the Spring Boot JAR
 RUN mvn clean package -DskipTests
 
-# Stage 2: Runtime image
-FROM eclipse-temurin:17-jre
+
+# Use official Playwright Java image
+FROM mcr.microsoft.com/playwright/java:v1.48.0-jammy
 
 WORKDIR /app
 
-RUN apt-get update && \
-    apt-get install -y chromium chromium-driver && \
-    ln -sf /usr/bin/chromium-browser /usr/bin/chromium && \
-    rm -rf /var/lib/apt/lists/*
+# Copy your built Spring Boot JAR
+COPY target/privacyanalyzer-0.0.1-SNAPSHOT.jar app.jar
 
-COPY --from=build /app/target/privacyanalyzer-0.0.1-SNAPSHOT.jar app.jar
-
-ENV CHROMIUM_PATH=/usr/bin/chromium-browser
-
+# Expose Spring Boot port
 EXPOSE 8080
+
+# Run the app
 ENTRYPOINT ["java", "-jar", "app.jar"]
+
